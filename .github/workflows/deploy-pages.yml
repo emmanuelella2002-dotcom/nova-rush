@@ -1,5 +1,4 @@
 name: Build and deploy Nova Rush
-
 on:
   push:
     branches: [main]
