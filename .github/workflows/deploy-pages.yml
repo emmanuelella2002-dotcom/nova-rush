@@ -1,1 +1,84 @@
+name: Build and deploy Nova Rush
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "nova-rush-updated-source-2026-11-18.zip"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify uploaded source archive
+        run: |
+          test -f nova-rush-updated-source-2026-11-18.zip || {
+            echo "::error::Upload nova-rush-updated-source-2026-11-18.zip to the repository root first."
+            exit 1
+          }
+
+      - name: Extract latest Nova Rush source
+        run: |
+          mkdir site
+          unzip -q nova-rush-updated-source-2026-11-18.zip -d site
+          test -f site/package.json
+          test -f site/package-lock.json
+          test -f site/src/App.tsx
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install declared dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Run full strict TypeScript check
+        working-directory: site
+        run: npm run typecheck
+
+      - name: Configure GitHub Pages base path
+        working-directory: site
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; const p="vite.config.ts"; let s=fs.readFileSync(p,"utf8"); if (!s.includes("base:")) s=s.replace("export default defineConfig({", "export default defineConfig({ base: \"/nova-rush/\","); fs.writeFileSync(p,s);'
+
+      - name: Build production game
+        working-directory: site
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload production artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
